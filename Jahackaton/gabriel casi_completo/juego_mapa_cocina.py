@@ -424,10 +424,37 @@ def jugar_mapa():
             screen.blit(timer_text, (ANCHO_MAPA - 150, 10))
 
             if tiempo_restante <= 0:
-                screen.blit(fondo_fin, (0, 0))
-                pygame.display.flip()
-                pygame.time.delay(3000)
+                # --- Pantalla de derrota con botones añadidos ---
+                boton_reintentar = pygame.Rect(ANCHO_MAPA // 2 - 250, ALTO_MAPA // 2 + 100, 200, 70)
+                boton_salir_fin = pygame.Rect(ANCHO_MAPA // 2 + 50, ALTO_MAPA // 2 + 100, 200, 70)
+                fin_activo = True
+
+                while fin_activo:
+                    for ev in pygame.event.get():
+                        if ev.type == pygame.QUIT:
+                            pygame.quit()
+                            sys.exit()
+                        if ev.type == pygame.MOUSEBUTTONDOWN:
+                            if boton_reintentar.collidepoint(ev.pos):
+                                return  # vuelve al menú principal
+                            if boton_salir_fin.collidepoint(ev.pos):
+                                pygame.quit()
+                                sys.exit()
+
+                    # Fondo de derrota
+                    screen.blit(fondo_fin, (0, 0))
+
+                    # Dibujar botones (sin alterar estilos existentes)
+                    dibujar_boton(screen, boton_reintentar, "Jugar de nuevo",
+                                fuente_botones, verde_texto, crema, verde_borde)
+                    dibujar_boton(screen, boton_salir_fin, "Salir",
+                                fuente_botones, verde_texto, crema, verde_borde)
+
+                    pygame.display.flip()
+                    clock_mapa.tick(60)
+
                 return
+
 
             if load_error:
                 draw_hint(load_error, 20, ALTO_MAPA - 60)
