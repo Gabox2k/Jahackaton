@@ -1,254 +1,292 @@
 import pygame
 import pytmx
-import sys
+import random
+from collections import Counter
 
 pygame.init()
 
-# -------------------------------
-# Configuración ventana
-# -------------------------------
-ANCHO_MENU, ALTO_MENU = 1152, 758
-ANCHO_MAPA, ALTO_MAPA = 1344, 768
-ventana = pygame.display.set_mode((ANCHO_MENU, ALTO_MENU))
-pygame.display.set_caption("Tembi'u Rush")
+WIDTH, HEIGHT = 1344, 768
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Mapa con colisiones + Recetas/Pedidos")
+
+# === MAPA / TILED ============================================================
+tmx_data = pytmx.util_pygame.load_pygame("cocina.tmx")
+
+collisions = []
+for obj in tmx_data.objects:
+    if getattr(obj, "width", 0) == 0 or getattr(obj, "height", 0) == 0:
+        continue
+    x = obj.x
+    y = obj.y
+    if getattr(obj, "gid", None):  # tile
+        x = int(x)
+        y = int(y - obj.height)
+    else:
+        x = int(x)
+        y = int(y)
+    rect = pygame.Rect(x, y, int(obj.width), int(obj.height))
+    collisions.append(rect)
 
 clock = pygame.time.Clock()
 
-# -------------------------------
-# Fondos
-# -------------------------------
-fondo_menu = pygame.image.load("menu.png").convert()
-fondo_menu = pygame.transform.scale(fondo_menu, (ANCHO_MENU, ALTO_MENU))
+# === JUGADORES ===============================================================
+def load_and_scale(path, size=(128, 128)):
+    img = pygame.image.load(path).convert_alpha()
+    return pygame.transform.scale(img, size)
 
-fondo_instr = pygame.image.load("fondo_instrucciones.jpg").convert()
-fondo_instr = pygame.transform.scale(fondo_instr, (ANCHO_MENU, ALTO_MENU))
+player1_sprites = {
+    "up": load_and_scale("player1.png"),
+    "down": load_and_scale("player1.png"),
+    "left": load_and_scale("player1.png"),
+    "right": load_and_scale("player1.png"),
+}
+player2_sprites = {
+    "up": load_and_scale("player2.png"),
+    "down": load_and_scale("player2.png"),
+    "left": load_and_scale("player2.png"),
+    "right": load_and_scale("player2.png"),
+}
 
-# -------------------------------
-# Colores y fuentes
-# -------------------------------
-crema = (252, 242, 210)
-verde_borde = (64, 128, 64)
-verde_texto = (48, 96, 48)
-negro = (0, 0, 0)
-naranja_calido = (230, 126, 34)
-blanco_roto = (250, 248, 232)
+class Player:
+    def __init__(self, x, y, speed, sprites):
+        self.sprites = sprites
+        self.direction = "down"
+        self.speed = speed
+        rect_w, rect_h = 32, 32
+        self.rect = pygame.Rect(0, 0, rect_w, rect_h)
+        self.rect.midbottom = (x, y)
 
-fuente_texto = pygame.font.SysFont("Arial", 22)
-fuente_botones = pygame.font.SysFont("Arial", 42)
-fuente_continuar = pygame.font.SysFont("Arial", 32)
+        # Estado del jugador
+        self.bowl = []
+        self.last_cooked = None
 
-# -------------------------------
-# Botones
-# -------------------------------
-boton_jugar = pygame.Rect(ANCHO_MENU // 2 - 400, 600, 300, 80)
-boton_salir = pygame.Rect(ANCHO_MENU // 2 + 100, 600, 300, 80)
-boton_continuar = pygame.Rect(ANCHO_MENU // 2 - 150, ALTO_MENU - 120, 300, 70)
+    def handle_move(self, keys, controls):
+        dx, dy = 0, 0
+        if keys[controls["left"]]:
+            dx = -self.speed
+            self.direction = "left"
+        if keys[controls["right"]]:
+            dx = self.speed
+            self.direction = "right"
+        if keys[controls["up"]]:
+            dy = -self.speed
+            self.direction = "up"
+        if keys[controls["down"]]:
+            dy = self.speed
+            self.direction = "down"
 
-# -------------------------------
-# Texto instrucciones
-# -------------------------------
-lineas_texto = [
-    ("Objetivo:", naranja_calido),
-    ("Prepará y entregá los pedidos a tiempo para ganar.", blanco_roto),
-    ("Cada pedido entregado suma 100$, los que eches a perder te restaran 50$.", blanco_roto),
-    ("Controles:", naranja_calido),
-    ("Jugador 1 → WASD + E", blanco_roto),
-    ("Jugador 2 → Flechas + Enter", blanco_roto),
-    ("Acciones:", naranja_calido),
-    ("Tomá ingredientes", blanco_roto),
-    ("Cortá y cociná", blanco_roto),
-    ("Emplatá", blanco_roto),
+        self.rect.x += dx
+        for r in collisions:
+            if self.rect.colliderect(r):
+                if dx > 0: self.rect.right = r.left
+                elif dx < 0: self.rect.left = r.right
+
+        self.rect.y += dy
+        for r in collisions:
+            if self.rect.colliderect(r):
+                if dy > 0: self.rect.bottom = r.top
+                elif dy < 0: self.rect.top = r.bottom
+
+    def draw(self, surface):
+        sprite = self.sprites[self.direction]
+        sprite_w, sprite_h = sprite.get_size()
+        draw_x = self.rect.centerx - sprite_w // 2
+        draw_y = self.rect.bottom - sprite_h
+        surface.blit(sprite, (draw_x, draw_y))
+
+player1 = Player(1050, 600, 8, player1_sprites)
+player2 = Player(1050, 500, 8, player2_sprites)
+
+controls1 = {"left": pygame.K_LEFT, "right": pygame.K_RIGHT, "up": pygame.K_UP, "down": pygame.K_DOWN}
+controls2 = {"left": pygame.K_a, "right": pygame.K_d, "up": pygame.K_w, "down": pygame.K_s}
+
+def draw_map():
+    for layer in tmx_data.visible_layers:
+        if isinstance(layer, pytmx.TiledTileLayer):
+            for x, y, gid in layer:
+                tile = tmx_data.get_tile_image_by_gid(gid)
+                if tile:
+                    screen.blit(tile, (x * tmx_data.tilewidth, y * tmx_data.tileheight))
+
+# === SISTEMA DE RECETAS ======================================================
+FONT = pygame.font.SysFont(None, 22)
+BIG  = pygame.font.SysFont(None, 40)
+
+# Ingredientes sin "sal"
+INGREDIENT_KEYS = [
+    ("almidon",  "1 / KP1"),
+    ("queso",    "2 / KP2"),
+    ("manteca",  "3 / KP3"),
+    ("leche",    "4 / KP4"),
+    ("mandioca", "5 / KP5"),
+    ("harina",   "6 / KP6"),
+    ("carne",    "7 / KP7"),
 ]
 
-# -------------------------------
-# Función para dibujar botones
-# -------------------------------
-def dibujar_boton(superficie, rect, texto, fuente, color_texto, color_fondo, color_borde):
-    pygame.draw.rect(superficie, color_fondo, rect, border_radius=10)
-    pygame.draw.rect(superficie, color_borde, rect, width=6, border_radius=10)
-    render_texto = fuente.render(texto, True, color_texto)
-    superficie.blit(
-        render_texto,
-        (rect.centerx - render_texto.get_width() // 2,
-         rect.centery - render_texto.get_height() // 2)
-    )
+RECIPES = {
+    "MBEJU": {"almidon", "queso", "manteca"},
+    "PASTEL MANDI'O": {"mandioca", "harina", "carne"},
+}
 
-# -------------------------------
-# Función del mapa
-# -------------------------------
-def jugar_mapa():
-    # Configuración ventana mapa
-    screen = pygame.display.set_mode((ANCHO_MAPA, ALTO_MAPA))
-    pygame.display.set_caption("Tembi'u Rush - Cocina")
+# 🔀 Randomiza entre 1 a 3 pedidos
+possible_recipes = list(RECIPES.keys())
+orders = [random.choice(possible_recipes) for _ in range(random.randint(1, 3))]
+delivered = []
 
-    clock_mapa = pygame.time.Clock()
+# === FUNCIONES DE COCINA =====================================================
+def try_cook(player):
+    bowl_set = set(player.bowl)
+    for name, req in RECIPES.items():
+        if req.issubset(bowl_set):
+            player.last_cooked = name
+            player.bowl.clear()
+            return True
+    return False
 
-    # Cargar mapa de Tiled
-    tmx_data = pytmx.util_pygame.load_pygame("cocina.tmx")
+def deliver(player):
+    global delivered
+    if player.last_cooked is None:
+        return False
+    want = Counter(orders)
+    have = Counter(delivered)
+    if have[player.last_cooked] < want[player.last_cooked]:
+        delivered.append(player.last_cooked)
+        player.last_cooked = None
+        return True
+    return False
 
-    # Separar colisiones y objetos interactivos
-    collisions = []
-    interactivos = []
-    for obj in tmx_data.objects:
-        tipo = getattr(obj, "type", None) or obj.properties.get("tipo", None)
-        rect = pygame.Rect(int(obj.x), int(obj.y), int(obj.width), int(obj.height))
-        if tipo:
-            interactivos.append((tipo, rect))
-        else:
-            collisions.append(rect)
+def lists_match():
+    return Counter(delivered) == Counter(orders)
 
-    # Clase Player
-    class Player:
-        def __init__(self, x, y, speed, sprites):
-            self.sprites = sprites
-            self.direction = "down"
-            self.speed = speed
-            self.rect = pygame.Rect(x, y, 32, 32)
-            self.platos = 0
+# === TIMER Y ESTADO FINAL ====================================================
+TOTAL_TIME_MS = 120_000  # 2 minutos
+start_ticks = pygame.time.get_ticks()
+game_over = False
+game_result = None  # "win" o "lose"
 
-        def handle_input(self, keys, controls):
-            dx, dy = 0, 0
-            if keys[controls["left"]]:
-                dx = -self.speed
-                self.direction = "left"
-            if keys[controls["right"]]:
-                dx = self.speed
-                self.direction = "right"
-            if keys[controls["up"]]:
-                dy = -self.speed
-                self.direction = "up"
-            if keys[controls["down"]]:
-                dy = self.speed
-                self.direction = "down"
+# === INTERFAZ ================================================================
+def draw_panel():
+    panel = pygame.Rect(WIDTH - 360, 0, 360, HEIGHT)
+    pygame.draw.rect(screen, (245, 245, 245), panel)
+    pygame.draw.line(screen, (200, 200, 200), (panel.left, 0), (panel.left, HEIGHT), 2)
 
-            # mover X
-            self.rect.x += dx
-            for rect in collisions:
-                if self.rect.colliderect(rect):
-                    if dx > 0: self.rect.right = rect.left
-                    elif dx < 0: self.rect.left = rect.right
+    now = pygame.time.get_ticks()
+    remaining = max(0, TOTAL_TIME_MS - (now - start_ticks))
+    secs = remaining // 1000
+    time_text = BIG.render(f"Tiempo: {secs:>3}s", True, (50, 50, 50))
+    screen.blit(time_text, (panel.left + 10, 10))
 
-            # mover Y
-            self.rect.y += dy
-            for rect in collisions:
-                if self.rect.colliderect(rect):
-                    if dy > 0: self.rect.bottom = rect.top
-                    elif dy < 0: self.rect.top = rect.bottom
+    y = 52
+    screen.blit(BIG.render("Ingredientes", True, (20, 20, 20)), (panel.left+10, y)); y += 36
+    for name, hint in INGREDIENT_KEYS:
+        screen.blit(FONT.render(f"- {name} [{hint}]", True, (30, 30, 30)), (panel.left+14, y)); y += 22
 
-        def draw(self, surface):
-            sprite = self.sprites.get(self.direction)
-            if sprite:
-                draw_x = self.rect.centerx - sprite.get_width() // 2
-                draw_y = self.rect.bottom - sprite.get_height()
-                surface.blit(sprite, (draw_x, draw_y))
-            else:
-                pygame.draw.rect(surface, (0, 255, 0), self.rect)
+    y += 10
+    screen.blit(BIG.render("Pedidos", True, (20, 20, 20)), (panel.left+10, y)); y += 36
+    cnt = Counter(orders)
+    for k in cnt:
+        screen.blit(FONT.render(f"- {k} x{cnt[k]}", True, (30,30,30)), (panel.left+14, y)); y+=22
 
-    # Funciones ayuda
-    def load_and_scale(path, size=(128, 128)):
-        img = pygame.image.load(path).convert_alpha()
-        return pygame.transform.scale(img, size)
-
-    def draw_map():
-        for layer in tmx_data.visible_layers:
-            if isinstance(layer, pytmx.TiledTileLayer):
-                for x, y, gid in layer:
-                    tile = tmx_data.get_tile_image_by_gid(gid)
-                    if tile:
-                        screen.blit(tile, (x * tmx_data.tilewidth, y * tmx_data.tileheight))
-
-    # Crear jugadores
-    player1_sprites = {d: load_and_scale("player1.png") for d in ["up", "down", "left", "right"]}
-    player2_sprites = {d: load_and_scale("player2.png") for d in ["up", "down", "left", "right"]}
-
-    player1 = Player(1050, 600, 8, player1_sprites)
-    player2 = Player(1050, 500, 8, player2_sprites)
-
-    controls1 = {"left": pygame.K_a, "right": pygame.K_d, "up": pygame.K_w, "down": pygame.K_s}
-    controls2 = {"left": pygame.K_LEFT, "right": pygame.K_RIGHT, "up": pygame.K_UP, "down": pygame.K_DOWN}
-
-    INTERACT_PADDING = 10
-    running_mapa = True
-    while running_mapa:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-        keys = pygame.key.get_pressed()
-
-        # Mover jugadores
-        player1.handle_input(keys, controls1)
-        player2.handle_input(keys, controls2)
-
-        # Interacción jugador 1 con platos
-        for tipo, rect in interactivos[:]:
-            interact_rect = rect.inflate(INTERACT_PADDING, INTERACT_PADDING)
-            if tipo.lower() == "plato" and player1.rect.colliderect(interact_rect) and keys[pygame.K_e]:
-                player1.platos += 1
-                interactivos.remove((tipo, rect))
-                print("Jugador 1 agarró un plato!")
-
-        # Dibujar todo
-        screen.fill((0,0,0))
-        draw_map()
-        player1.draw(screen)
-        player2.draw(screen)
-
-        # Mostrar inventario
-        font = pygame.font.SysFont(None, 36)
-        text = font.render(f"Platos: {player1.platos}", True, (255,255,255))
-        screen.blit(text, (10,10))
-
-        pygame.display.flip()
-        clock_mapa.tick(60)
-
-# -------------------------------
-# Bucle principal menú
-# -------------------------------
-pantalla_juego = False
-while True:
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-
-        if evento.type == pygame.MOUSEBUTTONDOWN:
-            if not pantalla_juego:
-                if boton_jugar.collidepoint(evento.pos):
-                    pantalla_juego = True
-                if boton_salir.collidepoint(evento.pos):
-                    pygame.quit()
-                    sys.exit()
-            else:
-                if boton_continuar.collidepoint(evento.pos):
-                    # -------------------------------
-                    # Aquí llamamos al mapa
-                    # -------------------------------
-                    jugar_mapa()
-
-    # Dibujar menú o instrucciones
-    if pantalla_juego:
-        ventana.blit(fondo_instr, (0,0))
-
-        # Texto
-        espacio = 30
-        alturas_lineas = [fuente_texto.render(l, True, c).get_height() for l,c in lineas_texto]
-        alto_total = sum(alturas_lineas) + espacio*(len(lineas_texto)-1)
-        y_inicio = (ALTO_MENU - alto_total)//2 - 100
-        y = y_inicio
-        for linea, color in lineas_texto:
-            render_texto = fuente_texto.render(linea, True, color)
-            x = (ANCHO_MENU - render_texto.get_width())//2
-            ventana.blit(fuente_texto.render(linea, True, negro), (x+2,y+2))
-            ventana.blit(render_texto, (x,y))
-            y += render_texto.get_height() + espacio
-
-        dibujar_boton(ventana, boton_continuar, "Continuar", fuente_continuar, verde_texto, crema, verde_borde)
+    y += 10
+    screen.blit(BIG.render("Entregados", True, (20, 20, 20)), (panel.left+10, y)); y += 36
+    if not delivered:
+        screen.blit(FONT.render("(vacío)", True, (60,60,60)), (panel.left+14, y)); y+=22
     else:
-        ventana.blit(fondo_menu, (0,0))
-        dibujar_boton(ventana, boton_jugar, "Jugar", fuente_botones, verde_texto, crema, verde_borde)
-        dibujar_boton(ventana, boton_salir, "Salir", fuente_botones, verde_texto, crema, verde_borde)
+        cnt = Counter(delivered)
+        for k in cnt:
+            screen.blit(FONT.render(f"- {k} x{cnt[k]}", True, (30,30,30)), (panel.left+14, y)); y+=22
+
+    y += 16
+    screen.blit(BIG.render("Controles", True, (20, 20, 20)), (panel.left+10, y)); y+=36
+    for line in [
+        "P1: 1..7 agrega | ENTER cocina | D entrega | BKSP limpia",
+        "P2: KP1..KP7 | KP_ENTER cocina | RCTRL entrega | DEL limpia",
+        "V = Validar pedidos",
+    ]:
+        screen.blit(FONT.render(line, True, (40,40,40)), (panel.left+14, y)); y+=22
+
+def draw_overlay(result):
+    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    screen.blit(overlay, (0, 0))
+    if result == "win":
+        msg = BIG.render("¡GANASTE! 🎉 (ESC para salir)", True, (255,255,255))
+    else:
+        msg = BIG.render("PERDISTE 😢 (ESC para salir)", True, (255,255,255))
+    screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 20))
+
+# === MAPEO DE INGREDIENTES ====================================================
+KEY_TO_ING1 = {
+    pygame.K_1: "almidon",
+    pygame.K_2: "queso",
+    pygame.K_3: "manteca",
+    pygame.K_4: "leche",
+    pygame.K_5: "mandioca",
+    pygame.K_6: "harina",
+    pygame.K_7: "carne",
+}
+KEY_TO_ING2 = {
+    pygame.K_KP1: "almidon",
+    pygame.K_KP2: "queso",
+    pygame.K_KP3: "manteca",
+    pygame.K_KP4: "leche",
+    pygame.K_KP5: "mandioca",
+    pygame.K_KP6: "harina",
+    pygame.K_KP7: "carne",
+}
+
+# === LOOP PRINCIPAL ==========================================================
+running = True
+while running:
+    now = pygame.time.get_ticks()
+    remaining = max(0, TOTAL_TIME_MS - (now - start_ticks))
+    if not game_over and remaining == 0:
+        game_over = True
+        game_result = "lose"
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if game_over and event.key == pygame.K_ESCAPE:
+                running = False
+            if not game_over:
+                # P1
+                if event.key in KEY_TO_ING1: player1.bowl.append(KEY_TO_ING1[event.key])
+                if event.key == pygame.K_RETURN: try_cook(player1)
+                if event.key == pygame.K_d: deliver(player1)
+                if event.key == pygame.K_BACKSPACE: player1.bowl.clear()
+
+                # P2
+                if event.key in KEY_TO_ING2: player2.bowl.append(KEY_TO_ING2[event.key])
+                if event.key == pygame.K_KP_ENTER: try_cook(player2)
+                if event.key == pygame.K_RCTRL: deliver(player2)
+                if event.key == pygame.K_DELETE: player2.bowl.clear()
+
+                # Validar
+                if event.key == pygame.K_v:
+                    if lists_match():
+                        game_over = True
+                        game_result = "win"
+                    else:
+                        game_over = True
+                        game_result = "lose"
+
+    keys = pygame.key.get_pressed()
+    if not game_over:
+        player1.handle_move(keys, controls1)
+        player2.handle_move(keys, controls2)
+
+    screen.fill((0, 0, 0))
+    draw_map()
+    player1.draw(screen)
+    player2.draw(screen)
+    draw_panel()
+
+    if game_over:
+        draw_overlay(game_result)
 
     pygame.display.flip()
-    clock.tick(30)
+    clock.tick(60)
+
+pygame.quit()
