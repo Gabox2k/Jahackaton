@@ -31,10 +31,12 @@ negro = (0, 0, 0)
 #Fuentes usando SysFont
 fuente_texto = pygame.font.SysFont("Arial", 22)   # texto con instrucciones
 fuente_botones = pygame.font.SysFont("Arial", 42) # botones
+fuente_continuar = pygame.font.SysFont("Arial", 32)
 
 #Botones
 boton_juego = pygame.Rect(ancho // 2 - 400, 600, 300, 80)
 boton_salir = pygame.Rect(ancho // 2 + 100, 600, 300, 80)
+boton_continuar = pygame.Rect(ancho // 2 - 150, alto - 120, 300, 70)
 
 clock = pygame.time.Clock()
 
@@ -49,6 +51,7 @@ def dibujar_boton(superficie, rect, texto, fuente, color_texto, color_fondo, col
     )
 
 pantalla_juego = False
+continuar_juego = False
 
 #Texto con instrucciones
 lineas_texto = [
@@ -78,7 +81,12 @@ while True:
                 if boton_salir.collidepoint(evento.pos):
                     pygame.quit()
                     sys.exit()
-    
+            else:
+                if boton_continuar.collidepoint(evento.pos):
+                    continuar_juego = True
+                    print("")
+                    pantalla_juego = False
+                    
     if pantalla_juego:
         ventana.blit(fondo_bosque, (0, 0))
 
@@ -97,6 +105,8 @@ while True:
             #Texto principal
             ventana.blit(render_texto, (x, y))
             y += render_texto.get_height() + espacio
+    
+        dibujar_boton(ventana, boton_continuar, "Continuar", fuente_continuar, verde_texto, crema, verde_borde)
 
     else:
         ventana.blit(fondo, (0, 0))
