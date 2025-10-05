@@ -57,8 +57,8 @@ lineas_texto = [
     ("Prepará y entregá los pedidos a tiempo para ganar.", blanco_roto),
     ("Cada pedido entregado suma 100$, los que eches a perder te restaran 50$.", blanco_roto),
     ("Controles:", naranja_calido),
-    ("Jugador 1 → Flechas + Enter", blanco_roto),
-    ("Jugador 2 → WASD + E", blanco_roto),
+    ("Jugador 1 → WASD (solo moverse)", blanco_roto),
+    ("Jugador 2 → Flechas + 2 para recoger + 3 para entregar", blanco_roto),
     ("Acciones:", naranja_calido),
     ("Tomá ingredientes", blanco_roto),
     ("Cortá y cociná", blanco_roto),
@@ -109,7 +109,7 @@ def jugar_mapa():
 
     mesa_x = 400
     mesa_y = 300
-    num_platos = 3  # Solo 3 platos
+    num_platos = 3
     for i in range(num_platos):
         x = mesa_x + i * 60
         y = mesa_y
@@ -118,7 +118,7 @@ def jugar_mapa():
     # -------------------
     # Zona pick-up (parte inferior derecha)
     # -------------------
-    pickup_rect = pygame.Rect(1200, 650, 100, 100)
+    pickup_rect = pygame.Rect(1060, 560, 100, 100)
 
     # -------------------
     # Clase Player
@@ -129,7 +129,7 @@ def jugar_mapa():
             self.direction = "down"
             self.speed = speed
             self.rect = pygame.Rect(x, y, 32, 32)
-            self.tiene_plato = False
+            self.platos_recogidos = 0
 
         def handle_input(self, keys, controls):
             dx, dy = 0, 0
@@ -185,14 +185,14 @@ def jugar_mapa():
     # -------------------
     # Crear jugadores
     # -------------------
-    player2_sprites = {d: load_and_scale("player2.png") for d in ["up","down","left","right"]}
     player1_sprites = {d: load_and_scale("player1.png") for d in ["up","down","left","right"]}
+    player2_sprites = {d: load_and_scale("player2.png") for d in ["up","down","left","right"]}
 
-    player2 = Player(1050,600,8,player2_sprites)  # Player 2 usa WASD
-    player1 = Player(1050,500,8,player1_sprites)  # Player 1 usa flechas
+    player1 = Player(1050,600,8,player1_sprites)  # Player 1 solo se mueve
+    player2 = Player(1050,500,8,player2_sprites)  # Player 2 recoge y entrega
 
-    controls2 = {"left": pygame.K_a,"right": pygame.K_d,"up": pygame.K_w,"down": pygame.K_s,"interact": pygame.K_e}
-    controls1 = {"left": pygame.K_LEFT,"right": pygame.K_RIGHT,"up": pygame.K_UP,"down": pygame.K_DOWN,"interact": pygame.K_RETURN}
+    controls1 = {"left": pygame.K_a,"right": pygame.K_d,"up": pygame.K_w,"down": pygame.K_s}
+    controls2 = {"left": pygame.K_LEFT,"right": pygame.K_RIGHT,"up": pygame.K_UP,"down": pygame.K_DOWN,"recoger": pygame.K_2,"entregar": pygame.K_3}
 
     INTERACT_PADDING = 10
     tiempo_inicial = pygame.time.get_ticks()
@@ -210,25 +210,21 @@ def jugar_mapa():
         player2.handle_input(keys, controls2)
 
         # -------------------
-        # Interacción con platos
+        # Interacción con platos (solo Player 2)
         # -------------------
         for tipo, rect in interactivos[:]:
             interact_rect = rect.inflate(INTERACT_PADDING, INTERACT_PADDING)
             if tipo.lower() == "plato":
-                # Player 1 toma plato si no tiene
-                if player1.rect.colliderect(interact_rect) and keys[controls1["interact"]] and not player1.tiene_plato:
-                    player1.tiene_plato = True
-                    interactivos.remove((tipo, rect))
-                # Player 2 solo toma plato sin puntaje
-                elif player2.rect.colliderect(interact_rect) and keys[controls2["interact"]]:
+                if player2.rect.colliderect(interact_rect) and keys[controls2["recoger"]]:
+                    player2.platos_recogidos += 1
                     interactivos.remove((tipo, rect))
 
         # -------------------
-        # Player 1 entrega plato en pick-up
+        # Player 2 entrega platos en zona amarilla con tecla 3
         # -------------------
-        if player1.tiene_plato and player1.rect.colliderect(pickup_rect):
-            monedas += 50  # Sumar solo al Player 1
-            player1.tiene_plato = False
+        if player2.rect.colliderect(pickup_rect) and keys[controls2["entregar"]] and player2.platos_recogidos > 0:
+            monedas += 50 * player2.platos_recogidos
+            player2.platos_recogidos = 0
 
         # -------------------
         # Dibujar todo
@@ -243,12 +239,12 @@ def jugar_mapa():
             if tipo.lower() == "plato":
                 screen.blit(plato_img, rect.topleft)
 
-        # Dibujar plato que lleva Player 1
-        if player1.tiene_plato:
-            screen.blit(plato_img, (player1.rect.x, player1.rect.y - 20))
+        # Dibujar plato que lleva Player 2
+        if player2.platos_recogidos > 0:
+            screen.blit(plato_img, (player2.rect.x, player2.rect.y - 20))
 
         # Dibujar zona pick-up
-        pygame.draw.rect(screen, (255,255,0), pickup_rect, 3)  # opcional para debug
+        pygame.draw.rect(screen, (255,255,0), pickup_rect, 3)
 
         # Mostrar monedas
         screen.blit(fuente_moneda.render(f"Moneda: {monedas}", True, (255,255,255)), (10,10))
