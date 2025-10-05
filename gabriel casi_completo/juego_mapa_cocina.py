@@ -1,4 +1,4 @@
-import pygame 
+import pygame
 import pytmx
 import sys
 
@@ -107,8 +107,8 @@ def jugar_mapa():
     plato_img = pygame.image.load("plato.png").convert_alpha()
     plato_img = pygame.transform.scale(plato_img, (32,32))
 
-    mesa_x = 400
-    mesa_y = 300
+    mesa_x = 460
+    mesa_y = 350
     num_platos = 3
     for i in range(num_platos):
         x = mesa_x + i * 60
@@ -116,9 +116,9 @@ def jugar_mapa():
         interactivos.append(("plato", pygame.Rect(x, y, 32, 32)))
 
     # -------------------
-    # Zona pick-up (parte inferior derecha)
+    # Zona entrega (solo posición, sin rect visible)
     # -------------------
-    pickup_rect = pygame.Rect(1060, 560, 100, 100)
+    entrega_x, entrega_y = 1060, 560  # solo referencia para entregar
 
     # -------------------
     # Clase Player
@@ -214,17 +214,20 @@ def jugar_mapa():
         # -------------------
         for tipo, rect in interactivos[:]:
             interact_rect = rect.inflate(INTERACT_PADDING, INTERACT_PADDING)
-            if tipo.lower() == "plato":
-                if player2.rect.colliderect(interact_rect) and keys[controls2["recoger"]]:
+            # Player2 recoge solo si está cerca en X y casi mismo nivel en Y
+            if tipo.lower() == "plato" and keys[controls2["recoger"]]:
+                if abs(player2.rect.bottom - rect.bottom) < 15 and abs(player2.rect.centerx - rect.centerx) < 35:
                     player2.platos_recogidos += 1
                     interactivos.remove((tipo, rect))
+                    break  # solo uno a la vez
 
         # -------------------
-        # Player 2 entrega platos en zona amarilla con tecla 3
+        # Player 2 entrega platos en zona fija con tecla 3
         # -------------------
-        if player2.rect.colliderect(pickup_rect) and keys[controls2["entregar"]] and player2.platos_recogidos > 0:
-            monedas += 50 * player2.platos_recogidos
-            player2.platos_recogidos = 0
+        if keys[controls2["entregar"]]:
+            if abs(player2.rect.centerx - entrega_x) < 50 and abs(player2.rect.centery - entrega_y) < 50:
+                monedas += 50 * player2.platos_recogidos
+                player2.platos_recogidos = 0
 
         # -------------------
         # Dibujar todo
@@ -242,9 +245,6 @@ def jugar_mapa():
         # Dibujar plato que lleva Player 2
         if player2.platos_recogidos > 0:
             screen.blit(plato_img, (player2.rect.x, player2.rect.y - 20))
-
-        # Dibujar zona pick-up
-        pygame.draw.rect(screen, (255,255,0), pickup_rect, 3)
 
         # Mostrar monedas
         screen.blit(fuente_moneda.render(f"Moneda: {monedas}", True, (255,255,255)), (10,10))
