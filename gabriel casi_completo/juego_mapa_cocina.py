@@ -23,6 +23,9 @@ fondo_menu = pygame.transform.scale(fondo_menu, (ANCHO_MENU, ALTO_MENU))
 fondo_instr = pygame.image.load("fondo_instrucciones.jpg").convert()
 fondo_instr = pygame.transform.scale(fondo_instr, (ANCHO_MENU, ALTO_MENU))
 
+fondo_fin = pygame.image.load("fondo_perdieron.jpg").convert()
+fondo_fin = pygame.transform.scale(fondo_fin, (ANCHO_MAPA, ALTO_MAPA))
+
 # -------------------------------
 # Colores y fuentes
 # -------------------------------
@@ -36,6 +39,8 @@ blanco_roto = (250, 248, 232)
 fuente_texto = pygame.font.SysFont("Arial", 22)
 fuente_botones = pygame.font.SysFont("Arial", 42)
 fuente_continuar = pygame.font.SysFont("Arial", 32)
+fuente_timer = pygame.font.SysFont("Arial", 36)
+fuente_moneda = pygame.font.SysFont("Arial", 36)
 
 # -------------------------------
 # Botones
@@ -52,8 +57,8 @@ lineas_texto = [
     ("Prepará y entregá los pedidos a tiempo para ganar.", blanco_roto),
     ("Cada pedido entregado suma 100$, los que eches a perder te restaran 50$.", blanco_roto),
     ("Controles:", naranja_calido),
-    ("Jugador 1 → WASD + E", blanco_roto),
-    ("Jugador 2 → Flechas + Enter", blanco_roto),
+    ("Jugador 1 → Flechas + Enter", blanco_roto),
+    ("Jugador 2 → WASD + E", blanco_roto),
     ("Acciones:", naranja_calido),
     ("Tomá ingredientes", blanco_roto),
     ("Cortá y cociná", blanco_roto),
@@ -77,7 +82,6 @@ def dibujar_boton(superficie, rect, texto, fuente, color_texto, color_fondo, col
 # Función del mapa
 # -------------------------------
 def jugar_mapa():
-    # Configuración ventana mapa
     screen = pygame.display.set_mode((ANCHO_MAPA, ALTO_MAPA))
     pygame.display.set_caption("Tembi'u Rush - Cocina")
 
@@ -86,9 +90,9 @@ def jugar_mapa():
     # Cargar mapa de Tiled
     tmx_data = pytmx.util_pygame.load_pygame("cocina.tmx")
 
-    # Separar colisiones y objetos interactivos
     collisions = []
     interactivos = []
+
     for obj in tmx_data.objects:
         tipo = getattr(obj, "type", None) or obj.properties.get("tipo", None)
         rect = pygame.Rect(int(obj.x), int(obj.y), int(obj.width), int(obj.height))
@@ -97,14 +101,29 @@ def jugar_mapa():
         else:
             collisions.append(rect)
 
+    # -------------------
+    # Cargar imagen del plato y colocar 10 platos sobre la mesa
+    # -------------------
+    plato_img = pygame.image.load("plato.png").convert_alpha()
+    plato_img = pygame.transform.scale(plato_img, (32,32))
+
+    mesa_x = 400
+    mesa_y = 300
+    num_platos = 10
+    for i in range(num_platos):
+        x = mesa_x + (i % 5) * 60
+        y = mesa_y + (i // 5) * 40
+        interactivos.append(("plato", pygame.Rect(x, y, 32, 32)))
+
+    # -------------------
     # Clase Player
+    # -------------------
     class Player:
         def __init__(self, x, y, speed, sprites):
             self.sprites = sprites
             self.direction = "down"
             self.speed = speed
             self.rect = pygame.Rect(x, y, 32, 32)
-            self.platos = 0
 
         def handle_input(self, keys, controls):
             dx, dy = 0, 0
@@ -121,14 +140,12 @@ def jugar_mapa():
                 dy = self.speed
                 self.direction = "down"
 
-            # mover X
             self.rect.x += dx
             for rect in collisions:
                 if self.rect.colliderect(rect):
                     if dx > 0: self.rect.right = rect.left
                     elif dx < 0: self.rect.left = rect.right
 
-            # mover Y
             self.rect.y += dy
             for rect in collisions:
                 if self.rect.colliderect(rect):
@@ -144,8 +161,10 @@ def jugar_mapa():
             else:
                 pygame.draw.rect(surface, (0, 255, 0), self.rect)
 
+    # -------------------
     # Funciones ayuda
-    def load_and_scale(path, size=(128, 128)):
+    # -------------------
+    def load_and_scale(path, size=(128,128)):
         img = pygame.image.load(path).convert_alpha()
         return pygame.transform.scale(img, size)
 
@@ -155,19 +174,23 @@ def jugar_mapa():
                 for x, y, gid in layer:
                     tile = tmx_data.get_tile_image_by_gid(gid)
                     if tile:
-                        screen.blit(tile, (x * tmx_data.tilewidth, y * tmx_data.tileheight))
+                        screen.blit(tile, (x*tmx_data.tilewidth, y*tmx_data.tileheight))
 
+    # -------------------
     # Crear jugadores
-    player1_sprites = {d: load_and_scale("player1.png") for d in ["up", "down", "left", "right"]}
-    player2_sprites = {d: load_and_scale("player2.png") for d in ["up", "down", "left", "right"]}
+    # -------------------
+    player2_sprites = {d: load_and_scale("player2.png") for d in ["up","down","left","right"]}
+    player1_sprites = {d: load_and_scale("player1.png") for d in ["up","down","left","right"]}
 
-    player1 = Player(1050, 600, 8, player1_sprites)
-    player2 = Player(1050, 500, 8, player2_sprites)
+    player2 = Player(1050,600,8,player2_sprites)  # Player 2 usa WASD
+    player1 = Player(1050,500,8,player1_sprites)  # Player 1 usa flechas
 
-    controls1 = {"left": pygame.K_a, "right": pygame.K_d, "up": pygame.K_w, "down": pygame.K_s}
-    controls2 = {"left": pygame.K_LEFT, "right": pygame.K_RIGHT, "up": pygame.K_UP, "down": pygame.K_DOWN}
+    controls2 = {"left": pygame.K_a,"right": pygame.K_d,"up": pygame.K_w,"down": pygame.K_s,"interact": pygame.K_e}
+    controls1 = {"left": pygame.K_LEFT,"right": pygame.K_RIGHT,"up": pygame.K_UP,"down": pygame.K_DOWN,"interact": pygame.K_RETURN}
 
     INTERACT_PADDING = 10
+    tiempo_inicial = pygame.time.get_ticks()
+
     running_mapa = True
     while running_mapa:
         for event in pygame.event.get():
@@ -176,18 +199,17 @@ def jugar_mapa():
                 sys.exit()
 
         keys = pygame.key.get_pressed()
-
-        # Mover jugadores
         player1.handle_input(keys, controls1)
         player2.handle_input(keys, controls2)
 
-        # Interacción jugador 1 con platos
+        # Interacción con platos
         for tipo, rect in interactivos[:]:
             interact_rect = rect.inflate(INTERACT_PADDING, INTERACT_PADDING)
-            if tipo.lower() == "plato" and player1.rect.colliderect(interact_rect) and keys[pygame.K_e]:
-                player1.platos += 1
-                interactivos.remove((tipo, rect))
-                print("Jugador 1 agarró un plato!")
+            if tipo.lower() == "plato":
+                if player1.rect.colliderect(interact_rect) and keys[controls1["interact"]]:
+                    interactivos.remove((tipo, rect))
+                elif player2.rect.colliderect(interact_rect) and keys[controls2["interact"]]:
+                    interactivos.remove((tipo, rect))
 
         # Dibujar todo
         screen.fill((0,0,0))
@@ -195,10 +217,28 @@ def jugar_mapa():
         player1.draw(screen)
         player2.draw(screen)
 
-        # Mostrar inventario
-        font = pygame.font.SysFont(None, 36)
-        text = font.render(f"Platos: {player1.platos}", True, (255,255,255))
-        screen.blit(text, (10,10))
+        # Dibujar platos
+        for tipo, rect in interactivos:
+            if tipo.lower() == "plato":
+                screen.blit(plato_img, rect.topleft)
+
+        # Mostrar texto "Moneda:" fijo
+        screen.blit(fuente_moneda.render("Moneda: 0", True, (255,255,255)), (10,10))
+
+        # Timer 2 minutos
+        tiempo_actual = pygame.time.get_ticks()
+        tiempo_restante = max(0, 120000 - (tiempo_actual - tiempo_inicial))
+        minutos = tiempo_restante // 60000
+        segundos = (tiempo_restante % 60000) // 1000
+        timer_text = fuente_timer.render(f"{minutos:02d}:{segundos:02d}", True, (255,255,255))
+        screen.blit(timer_text, (ANCHO_MAPA - 150, 10))
+
+        # Fin cuando se acaba el tiempo
+        if tiempo_restante <= 0:
+            screen.blit(fondo_fin,(0,0))
+            pygame.display.flip()
+            pygame.time.delay(3000)
+            return
 
         pygame.display.flip()
         clock_mapa.tick(60)
@@ -222,9 +262,6 @@ while True:
                     sys.exit()
             else:
                 if boton_continuar.collidepoint(evento.pos):
-                    # -------------------------------
-                    # Aquí llamamos al mapa
-                    # -------------------------------
                     jugar_mapa()
 
     # Dibujar menú o instrucciones
