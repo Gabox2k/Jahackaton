@@ -1,4 +1,4 @@
-import pygame
+import pygame 
 import pytmx
 import sys
 
@@ -102,18 +102,23 @@ def jugar_mapa():
             collisions.append(rect)
 
     # -------------------
-    # Cargar imagen del plato y colocar 10 platos sobre la mesa
+    # Cargar imagen del plato y colocar 3 platos sobre la mesa
     # -------------------
     plato_img = pygame.image.load("plato.png").convert_alpha()
     plato_img = pygame.transform.scale(plato_img, (32,32))
 
     mesa_x = 400
     mesa_y = 300
-    num_platos = 10
+    num_platos = 3  # Solo 3 platos
     for i in range(num_platos):
-        x = mesa_x + (i % 5) * 60
-        y = mesa_y + (i // 5) * 40
+        x = mesa_x + i * 60
+        y = mesa_y
         interactivos.append(("plato", pygame.Rect(x, y, 32, 32)))
+
+    # -------------------
+    # Zona pick-up (parte inferior derecha)
+    # -------------------
+    pickup_rect = pygame.Rect(1200, 650, 100, 100)
 
     # -------------------
     # Clase Player
@@ -124,6 +129,7 @@ def jugar_mapa():
             self.direction = "down"
             self.speed = speed
             self.rect = pygame.Rect(x, y, 32, 32)
+            self.tiene_plato = False
 
         def handle_input(self, keys, controls):
             dx, dy = 0, 0
@@ -190,6 +196,7 @@ def jugar_mapa():
 
     INTERACT_PADDING = 10
     tiempo_inicial = pygame.time.get_ticks()
+    monedas = 0
 
     running_mapa = True
     while running_mapa:
@@ -202,16 +209,30 @@ def jugar_mapa():
         player1.handle_input(keys, controls1)
         player2.handle_input(keys, controls2)
 
+        # -------------------
         # Interacción con platos
+        # -------------------
         for tipo, rect in interactivos[:]:
             interact_rect = rect.inflate(INTERACT_PADDING, INTERACT_PADDING)
             if tipo.lower() == "plato":
-                if player1.rect.colliderect(interact_rect) and keys[controls1["interact"]]:
+                # Player 1 toma plato si no tiene
+                if player1.rect.colliderect(interact_rect) and keys[controls1["interact"]] and not player1.tiene_plato:
+                    player1.tiene_plato = True
                     interactivos.remove((tipo, rect))
+                # Player 2 solo toma plato sin puntaje
                 elif player2.rect.colliderect(interact_rect) and keys[controls2["interact"]]:
                     interactivos.remove((tipo, rect))
 
+        # -------------------
+        # Player 1 entrega plato en pick-up
+        # -------------------
+        if player1.tiene_plato and player1.rect.colliderect(pickup_rect):
+            monedas += 50  # Sumar solo al Player 1
+            player1.tiene_plato = False
+
+        # -------------------
         # Dibujar todo
+        # -------------------
         screen.fill((0,0,0))
         draw_map()
         player1.draw(screen)
@@ -222,8 +243,15 @@ def jugar_mapa():
             if tipo.lower() == "plato":
                 screen.blit(plato_img, rect.topleft)
 
-        # Mostrar texto "Moneda:" fijo
-        screen.blit(fuente_moneda.render("Moneda: 0", True, (255,255,255)), (10,10))
+        # Dibujar plato que lleva Player 1
+        if player1.tiene_plato:
+            screen.blit(plato_img, (player1.rect.x, player1.rect.y - 20))
+
+        # Dibujar zona pick-up
+        pygame.draw.rect(screen, (255,255,0), pickup_rect, 3)  # opcional para debug
+
+        # Mostrar monedas
+        screen.blit(fuente_moneda.render(f"Moneda: {monedas}", True, (255,255,255)), (10,10))
 
         # Timer 2 minutos
         tiempo_actual = pygame.time.get_ticks()
